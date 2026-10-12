@@ -35,13 +35,15 @@ Iron::Iron(
     this->tuner = new sTune(
         &this->currentTemp,
         &this->heaterOutput,
-        sTune::DampedOsc_PID,
+        sTune::NoOvershoot_PID,
         sTune::directIP,
         sTune::printSUMMARY);
 }
 
 void Iron::init()
 {
+    delay(1000);
+
     Serial.print("BandgapADC: ");
     Serial.println(Iron::readBandgapADC());
 
@@ -70,8 +72,6 @@ void Iron::init()
         PID_TUNING_SAMPLES);
 
     this->tuner->SetEmergencyStop(this->maxTemp);
-
-    delay(1000);
 }
 
 void Iron::run(float cjt, float vRef)

@@ -72,13 +72,13 @@ void printIronInfo()
         lcd.print("    IDLE    ");
         break;
     case HEATING:
-        lcd.print("  HEATING!  ");
+        lcd.print(" HEATER ON! ");
         break;
     case FAULT:
         lcd.print("   ERROR!   ");
         break;
     case TUNING:
-        lcd.print("   TUNING   ");
+        lcd.print(" PID TUNING ");
         break;
     }
 
