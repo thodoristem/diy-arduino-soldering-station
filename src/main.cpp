@@ -6,7 +6,7 @@
 
 #define MIN_HEATER_OUTPUT 0
 #define MAX_HEATER_OUTPUT 255
-#define MIN_SELECTABLE_TEMP 100
+#define MIN_SELECTABLE_TEMP 50
 #define MAX_SELECTABLE_TEMP 400
 
 #define HEATER_A_PIN 9
@@ -123,9 +123,9 @@ void printCommonInfo()
     sprintf(printBuffer, "%2d%cC", (int)coldJunctionTemp, (char)223);
     lcd.print(printBuffer);
 
-    lcd.setCursor(0, 1);
-    lcd.print(vRef, 1);
-    lcd.print("V");
+    // lcd.setCursor(0, 1);
+    // lcd.print(vRef, 3);
+    // lcd.print("V");
 }
 
 void tempUp()

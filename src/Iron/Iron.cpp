@@ -42,7 +42,7 @@ Iron::Iron(
 
 void Iron::init()
 {
-    delay(1000);
+    delay(2000);
 
     Serial.print("BandgapADC: ");
     Serial.println(Iron::readBandgapADC());
@@ -63,10 +63,10 @@ void Iron::init()
     this->pid->SetSampleTimeUs(PID_SAMPLE_TIME_US);
 
     this->tuner->Configure(
-        this->maxTemp,
+        this->maxTemp - this->coldJunctionTemp,
         this->maxOutput,
         this->minOutput,
-        PID_TUNING_OUTPUT_STEP,
+        this->maxOutput / 2,
         PID_TUNING_TEST_TIME_SEC,
         PID_TUNING_SETTLE_TIME_SEC,
         PID_TUNING_SAMPLES);
@@ -110,6 +110,8 @@ void Iron::runPID()
 
 void Iron::runPIDTuning()
 {
+    // this->readTemp();
+
     switch (this->tuner->Run())
     {
     case this->tuner->sample: // active once per sample during test
@@ -126,8 +128,8 @@ void Iron::runPIDTuning()
             this->settings.kp,
             this->settings.ki,
             this->settings.kd);
-        this->setStatus(HEATING);
         this->saveSettings();
+        this->setStatus(HEATING);
         break;
     case this->tuner->runPid: // active once per sample after tunings
         this->runPID();
@@ -324,7 +326,7 @@ float Iron::readVccVolts()
     }
 
     // Replace 1100 with your calibrated bandgap voltage in mV
-    return (1078L * 1023L / adc) / 1000.0f;
+    return (BANG_GAP_VOLTAGE * 1023L / adc) / 1000.0f;
 }
 
 float Iron::readVoltage(uint8_t pin, int samples, unsigned int sampleTimeUs, float vRef)
@@ -458,6 +460,7 @@ void Iron::setVRef(float vRef)
 void Iron::saveSettings()
 {
     EEPROM.put(this->heaterOutputPin, this->settings);
+    delay(1000);
 }
 
 void Iron::loadSettings()
