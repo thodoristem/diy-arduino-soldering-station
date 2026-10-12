@@ -41,7 +41,6 @@ enum Status
 
 struct Settings
 {
-    bool valid = false;
     float selectedTemp = 200.0f;
     float kp = 2.0f;
     float ki = 0.05f;

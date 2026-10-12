@@ -18,25 +18,6 @@ Iron::Iron(
     this->minTemp = minTemp;
     this->maxTemp = maxTemp;
 
-    Serial.print("KP:");
-    Serial.println(this->settings.kp);
-    Serial.print("KI:");
-    Serial.println(this->settings.ki);
-    Serial.print("KD:");
-    Serial.println(this->settings.kd);
-
-    Serial.println("Loaded saved settings");
-    this->loadSettings();
-
-    Serial.print("BandgapADC: ");
-    Serial.println(Iron::readBandgapADC());
-    Serial.print("KP:");
-    Serial.println(this->settings.kp);
-    Serial.print("KI:");
-    Serial.println(this->settings.ki);
-    Serial.print("KD:");
-    Serial.println(this->settings.kd);
-
     // QuickPID
     this->pid = new QuickPID(
         &this->currentTemp,
@@ -61,6 +42,18 @@ Iron::Iron(
 
 void Iron::init()
 {
+    Serial.print("BandgapADC: ");
+    Serial.println(Iron::readBandgapADC());
+
+    this->loadSettings();
+
+    Serial.print("KP:");
+    Serial.println(this->settings.kp);
+    Serial.print("KI:");
+    Serial.println(this->settings.ki);
+    Serial.print("KD:");
+    Serial.println(this->settings.kd);
+
     this->heaterOff();
 
     this->pid->SetMode(QuickPID::Control::automatic);
@@ -469,12 +462,19 @@ void Iron::saveSettings()
 
 void Iron::loadSettings()
 {
-    Settings temp;
+    Settings tmp;
 
-    EEPROM.get(this->heaterOutputPin, temp);
+    EEPROM.get(this->heaterOutputPin, tmp);
 
-    if (temp.valid)
+    // Serial.println("EEPROM DEBUG:");
+    // Serial.println(tmp.selectedTemp);
+    // Serial.println(tmp.kp);
+    // Serial.println(tmp.ki);
+    // Serial.println(tmp.kd);
+
+    if (!isnan(tmp.selectedTemp) && !isnan(tmp.kp) && !isnan(tmp.ki) && !isnan(tmp.kd))
     {
-        this->settings = temp;
+        Serial.println("Loaded settings from eeprom");
+        this->settings = tmp;
     }
 }
