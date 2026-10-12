@@ -63,6 +63,24 @@ void drawProgressBar(int pct, int x, int y, int width)
     }
 }
 
+void printCentered(int row, const char *text)
+{
+    int col = (20 - strlen(text)) / 2;
+
+    lcd.setCursor(col, row);
+    lcd.print(text);
+}
+
+void printIntro()
+{
+    printCentered(0, "DIY");
+    printCentered(1, "SOLDERING");
+    printCentered(2, "STATION");
+    printCentered(3, "by Thodoris");
+    delay(3000);
+    lcd.clear();
+}
+
 void printIronInfo()
 {
     lcd.setCursor(4, 0);
@@ -144,8 +162,9 @@ void setup()
     lcd.init();
     lcd.backlight();
     lcd.clear();
-
     bigNum.begin();
+
+    printIntro();
 
     tempUpButton.setup(TEMP_UP_BTN, INPUT_PULLUP, true);
     tempUpButton.setPressMs(BTN_PRESS_MS);
