@@ -17,6 +17,49 @@ Iron::Iron(
     this->maxOutput = maxOutput;
     this->minTemp = minTemp;
     this->maxTemp = maxTemp;
+}
+
+void Iron::init(float opAmpZeroOutputV, float opAmpGain, float userMeasuredVRefMv)
+{
+    Serial.println("###########################################");
+    Serial.println("########## DIY Soldering Station ##########");
+    Serial.println("###########################################");
+    Serial.println();
+
+    delay(2000);
+
+    long bandGapADC = Iron::readBandGapADC();
+
+    this->opAmpZeroOutputV = opAmpZeroOutputV;
+    this->opAmpGain = opAmpGain;
+    this->bandGapVoltage = (long)(userMeasuredVRefMv * bandGapADC / 1023);
+    this->vRef = Iron::readVccVolts(this->bandGapVoltage);
+
+    this->loadSettings();
+
+    Serial.print("OpAmpGain:        ");
+    Serial.println(this->opAmpGain);
+    Serial.print("OpAmpZeroOutputV: ");
+    Serial.println(this->opAmpZeroOutputV, 3);
+    Serial.print("BandGapADC:       ");
+    Serial.println(Iron::readBandGapADC());
+    Serial.print("BandGapVoltage:   ");
+    Serial.println(this->bandGapVoltage);
+    Serial.print("VREF:             ");
+    Serial.println(this->getVRef(), 3);
+    Serial.print("KP:               ");
+    Serial.println(this->settings.kp, 4);
+    Serial.print("KI:               ");
+    Serial.println(this->settings.ki, 4);
+    Serial.print("KD:               ");
+    Serial.println(this->settings.kd, 4);
+    Serial.print("Min Temp:         ");
+    Serial.println(this->minTemp);
+    Serial.print("Max Temp:         ");
+    Serial.println(this->maxTemp);
+
+    this->heaterOff();
+    readTemp();
 
     // QuickPID
     this->pid = new QuickPID(
@@ -31,36 +74,17 @@ Iron::Iron(
         QuickPID::iAwMode::iAwClamp, /* iAwCondition, iAwClamp, iAwOff */
         QuickPID::Action::direct);
 
+    this->pid->SetMode(QuickPID::Control::automatic);
+    this->pid->SetOutputLimits(this->minOutput, this->maxOutput);
+    this->pid->SetSampleTimeUs(PID_SAMPLE_TIME_US);
+
     // sTune: open-loop step-response autotuner
     this->tuner = new sTune(
         &this->currentTemp,
         &this->heaterOutput,
         sTune::NoOvershoot_PID,
         sTune::directIP,
-        sTune::printSUMMARY);
-}
-
-void Iron::init()
-{
-    delay(2000);
-
-    Serial.print("BandgapADC: ");
-    Serial.println(Iron::readBandgapADC());
-
-    this->loadSettings();
-
-    Serial.print("KP:");
-    Serial.println(this->settings.kp);
-    Serial.print("KI:");
-    Serial.println(this->settings.ki);
-    Serial.print("KD:");
-    Serial.println(this->settings.kd);
-
-    this->heaterOff();
-
-    this->pid->SetMode(QuickPID::Control::automatic);
-    this->pid->SetOutputLimits(this->minOutput, this->maxOutput);
-    this->pid->SetSampleTimeUs(PID_SAMPLE_TIME_US);
+        sTune::printALL);
 
     this->tuner->Configure(
         this->maxTemp - this->coldJunctionTemp,
@@ -74,13 +98,13 @@ void Iron::init()
     this->tuner->SetEmergencyStop(this->maxTemp);
 }
 
-void Iron::run(float cjt, float vRef)
+void Iron::run(float cjt)
 {
     this->coldJunctionTemp = cjt;
-    this->vRef = vRef;
 
     if (this->getStatus() == TUNING)
     {
+        this->pid->SetMode(QuickPID::Control::manual);
         this->runPIDTuning();
     }
     else
@@ -110,8 +134,6 @@ void Iron::runPID()
 
 void Iron::runPIDTuning()
 {
-    // this->readTemp();
-
     switch (this->tuner->Run())
     {
     case this->tuner->sample: // active once per sample during test
@@ -141,6 +163,7 @@ void Iron::runPIDTuning()
 void Iron::tune()
 {
     this->setStatus(TUNING);
+    Serial.println("\nPID Tuning started\n");
 }
 
 Status Iron::getStatus()
@@ -155,7 +178,7 @@ void Iron::setStatus(Status status)
 
 void Iron::heaterCheck()
 {
-    if (this->getHeaterOutput() < HEATER_CHECK_PWM_THRESHOLD)
+    if (this->getHeaterOutput() < this->maxOutput / 1.5)
     {
         this->heaterCheckActive = false;
         return;
@@ -283,7 +306,7 @@ void Iron::setPWMPrescaler(uint8_t pin, uint16_t prescale)
     }
 }
 
-long Iron::readBandgapADC()
+long Iron::readBandGapADC()
 {
     // Measure internal bandgap against AVCC
     ADMUX = _BV(REFS0) |
@@ -305,7 +328,7 @@ long Iron::readBandgapADC()
     return (high << 8) | low;
 }
 
-float Iron::readVccVolts()
+float Iron::readVccVolts(long bandGapVoltage)
 {
     // Select internal 1.1 V bandgap, measured against AVCC
     ADMUX = _BV(REFS0) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
@@ -326,27 +349,33 @@ float Iron::readVccVolts()
     }
 
     // Replace 1100 with your calibrated bandgap voltage in mV
-    return (BANG_GAP_VOLTAGE * 1023L / adc) / 1000.0f;
+    return (bandGapVoltage * 1023L / adc) / 1000.0f;
 }
 
-float Iron::readVoltage(uint8_t pin, int samples, unsigned int sampleTimeUs, float vRef)
+float Iron::readVoltage(uint8_t pin, int samples, byte skip, unsigned int sampleTimeUs, float vRef)
 {
-    analogRead(pin);
-
     int total = 0;
 
-    for (int i = 0; i < samples; i++)
+    for (int i = 0; i < samples + skip; i++)
     {
         delayMicroseconds(sampleTimeUs);
-        total += analogRead(pin);
+        if (i > skip)
+        {
+            total += analogRead(pin);
+        }
     }
 
-    return total / TEMP_MEASURE_SAMPLES * vRef / 1023.0f;
+    return total / samples * vRef / 1023.0f;
 }
 
 float Iron::readColdJunctionTemp(byte pin, float vRef, float fixedRes, float thermRes)
 {
-    float volts = Iron::readVoltage(pin, TEMP_MEASURE_SAMPLES, TEMP_MEASURE_SAMPLE_TIME_US, vRef);
+    float volts = Iron::readVoltage(
+        pin,
+        TEMP_MEASURE_SAMPLES,
+        TEMP_MEASURE_SAMPLES_TO_SKIP,
+        TEMP_MEASURE_SAMPLE_TIME_US,
+        vRef);
 
     if (volts <= 0.0f || volts >= vRef)
     {
@@ -365,12 +394,13 @@ void Iron::readTemp()
     float volts = Iron::readVoltage(
         this->tempSensorPin,
         TEMP_MEASURE_SAMPLES,
+        TEMP_MEASURE_SAMPLES_TO_SKIP,
         TEMP_MEASURE_SAMPLE_TIME_US,
         this->vRef);
     this->heaterOn();
 
     // Convert amplifier output to thermocouple millivolts.
-    float tcMilliVolts = (volts - OPAMP_ZERO_OUTPUT_V) * 1000.0f / OPAMP_GAIN;
+    float tcMilliVolts = (volts - this->opAmpZeroOutputV) * 1000.0f / this->opAmpGain;
 
     // Library applies cold-junction compensation and
     // converts thermocouple voltage to currentTemp.
@@ -469,15 +499,9 @@ void Iron::loadSettings()
 
     EEPROM.get(this->heaterOutputPin, tmp);
 
-    // Serial.println("EEPROM DEBUG:");
-    // Serial.println(tmp.selectedTemp);
-    // Serial.println(tmp.kp);
-    // Serial.println(tmp.ki);
-    // Serial.println(tmp.kd);
-
     if (!isnan(tmp.selectedTemp) && !isnan(tmp.kp) && !isnan(tmp.ki) && !isnan(tmp.kd))
     {
-        Serial.println("Loaded settings from eeprom");
+        Serial.println("Loading settings from eeprom\n");
         this->settings = tmp;
     }
 }

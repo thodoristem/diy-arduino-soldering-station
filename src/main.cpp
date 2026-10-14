@@ -8,6 +8,9 @@
 #define MAX_HEATER_OUTPUT 255
 #define MIN_SELECTABLE_TEMP 50
 #define MAX_SELECTABLE_TEMP 400
+#define OPAMP_ZERO_OUTPUT_V 0.002f
+#define OPAMP_GAIN 111.0f
+#define USER_MEASURED_VREF_MV 4939.0f
 
 #define HEATER_A_PIN 9
 #define TC_A_PIN A0
@@ -17,9 +20,9 @@
 #define TEMP_UP_BTN 4
 #define TEMP_DOWN_BTN 5
 #define FUNCTION_BTN 6
-#define BTN_PRESS_MS 200
+#define BTN_PRESS_MS 100
 #define BTN_LONG_PRESS_MS 5000
-#define BTN_LONG_PRESS_INTERVAL_MS 200
+#define BTN_LONG_PRESS_INTERVAL_MS BTN_PRESS_MS
 
 #define LCD_INTERVAL 80
 #define DEFAULT_SET_POINT 350.0f
@@ -42,7 +45,6 @@ Iron iron(HEATER_A_PIN,
 
 char printBuffer[10];
 
-float vRef;
 float coldJunctionTemp;
 
 void drawProgressBar(int pct, int x, int y, int width)
@@ -124,7 +126,7 @@ void printCommonInfo()
     lcd.print(printBuffer);
 
     // lcd.setCursor(0, 1);
-    // lcd.print(vRef, 3);
+    // lcd.print(iron.getVRef(), 2);
     // lcd.print("V");
 }
 
@@ -183,9 +185,7 @@ void setup()
     functionButton.attachClick(toggleIron);
     functionButton.attachLongPressStart(tune);
 
-    vRef = Iron::readVccVolts();
-
-    iron.init();
+    iron.init(OPAMP_ZERO_OUTPUT_V, OPAMP_GAIN, USER_MEASURED_VREF_MV);
     iron.setSelectedTemp(300);
     Iron::setPWMPrescaler(HEATER_A_PIN, 8);
 }
@@ -196,9 +196,9 @@ void loop()
 {
     unsigned long currentMillis = millis();
 
-    coldJunctionTemp = Iron::readColdJunctionTemp(THERMISTOR_PIN, vRef, THERMISTOR_FIXED_RES, THERMISTOR_RES);
+    coldJunctionTemp = Iron::readColdJunctionTemp(THERMISTOR_PIN, iron.getVRef(), THERMISTOR_FIXED_RES, THERMISTOR_RES);
 
-    iron.run(coldJunctionTemp, vRef);
+    iron.run(coldJunctionTemp);
 
     if (iron.getStatus() != TUNING)
     {

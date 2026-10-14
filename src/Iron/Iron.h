@@ -14,11 +14,9 @@
 #define THERMISTOR_K 298.15f
 #define THERMISTOR_BETA 3950.0f
 
-#define OPAMP_ZERO_OUTPUT_V 0.160f
-#define OPAMP_GAIN 111.0f
-
 #define TEMP_MEASURE_SAMPLES 30
-#define TEMP_MEASURE_SAMPLE_TIME_US 5
+#define TEMP_MEASURE_SAMPLES_TO_SKIP 2
+#define TEMP_MEASURE_SAMPLE_TIME_US 2
 
 #define PID_SAMPLE_TIME_US 100000
 
@@ -30,11 +28,6 @@
 #define HEATER_CHECK_PWM_THRESHOLD 120
 #define HEATER_CHECK_INTERVAL_SEC 5000
 #define HEATER_CHECK_MIN_TEMP_RIZE 2.0f
-
-/**
- * Value calculation: (Vcc(measured) x BangGapADC) / 1023
- */
-#define BANG_GAP_VOLTAGE 1047L
 
 enum Status
 {
@@ -71,8 +64,12 @@ private:
     float minTemp;
     float maxTemp;
 
-    float vRef = 4.928f;
+    float opAmpZeroOutputV = 0.0f;
+    float opAmpGain = 100.0f;
+    float vRef = 5.0f;
     float coldJunctionTemp = 25.0f;
+    long bandGapVoltage = 1100L;
+    float userMeasuredVRef = 5.0f;
 
     unsigned long heaterCheckStart = 0;
     float heaterCheckTemp = 0;
@@ -91,14 +88,14 @@ public:
         int minTemp,
         int maxTemp);
 
-    static long readBandgapADC();
-    static float readVccVolts();
-    static float readVoltage(uint8_t pin, int samples, unsigned int sampleTimeUs, float vRef);
+    static long readBandGapADC();
+    static float readVccVolts(long bandGapVoltage);
+    static float readVoltage(uint8_t pin, int samples, byte skip, unsigned int sampleTimeUs, float vRef);
     static float readColdJunctionTemp(uint8_t pin, float vRef, float fixedRes, float thermRes);
     static void setPWMPrescaler(uint8_t pin, uint16_t prescale);
 
-    void init();
-    void run(float cjt, float vRef);
+    void init(float opAmpZeroOutputV, float opAmpGain, float userMeasuredVRef);
+    void run(float cjt);
     void runPID();
     void runPIDTuning();
     void tune();
