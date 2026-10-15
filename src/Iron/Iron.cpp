@@ -26,7 +26,7 @@ void Iron::init(float opAmpZeroOutputV, float opAmpGain, float userMeasuredVRefM
     Serial.println("###########################################");
     Serial.println();
 
-    delay(2000);
+    delay(1000);
 
     long bandGapADC = Iron::readBandGapADC();
 
@@ -118,7 +118,7 @@ void Iron::runPID()
     this->readTemp();
     this->heaterCheck();
 
-    if (this->status == HEATING || this->status == TUNING)
+    if (this->status == HEATING || this->status == TUNING || this->status == SLEEP)
     {
         if (this->pid->Compute())
         {
@@ -211,11 +211,20 @@ void Iron::heaterOn()
 {
     if (this->outputReversed)
     {
-        analogWrite(this->heaterOutputPin, (int)map(this->heaterOutput, 0, 255, 255, 0));
+        analogWrite(
+            this->heaterOutputPin,
+            (int)map(
+                this->heaterOutput,
+                this->minOutput,
+                this->maxOutput,
+                this->maxOutput,
+                this->minOutput));
     }
     else
     {
-        analogWrite(this->heaterOutputPin, (int)this->heaterOutput);
+        analogWrite(
+            this->heaterOutputPin,
+            (int)this->heaterOutput);
     }
 }
 
@@ -233,7 +242,15 @@ void Iron::heaterOff()
 
 void Iron::heaterSleep()
 {
+    this->setStatus(SLEEP);
+    this->selectedPreSleepTemp = this->getSelectedTemp();
     this->setSelectedTemp(this->minTemp);
+}
+
+void Iron::heaterWake()
+{
+    this->setStatus(HEATING);
+    this->setSelectedTemp(this->selectedPreSleepTemp);
 }
 
 void Iron::setPWMPrescaler(uint8_t pin, uint16_t prescale)

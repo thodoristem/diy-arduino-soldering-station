@@ -5,12 +5,12 @@
 #include <OneButton.h>
 
 #define MIN_HEATER_OUTPUT 0
-#define MAX_HEATER_OUTPUT 255
-#define MIN_SELECTABLE_TEMP 50
+#define MAX_HEATER_OUTPUT 250
+#define MIN_SELECTABLE_TEMP 100
 #define MAX_SELECTABLE_TEMP 400
-#define OPAMP_ZERO_OUTPUT_V 0.002f
+#define OPAMP_ZERO_OUTPUT_V 0.045f
 #define OPAMP_GAIN 111.0f
-#define USER_MEASURED_VREF_MV 4939.0f
+#define USER_MEASURED_VREF_MV 4896.0f
 
 #define HEATER_A_PIN 9
 #define TC_A_PIN A0
@@ -20,9 +20,10 @@
 #define TEMP_UP_BTN 4
 #define TEMP_DOWN_BTN 5
 #define FUNCTION_BTN 6
-#define BTN_PRESS_MS 100
-#define BTN_LONG_PRESS_MS 5000
-#define BTN_LONG_PRESS_INTERVAL_MS BTN_PRESS_MS
+#define BTN_PRESS_MS 10
+#define BTN_CLICK_MS 1
+#define BTN_LONG_PRESS_INTERVAL_MS 100
+#define BTN_VERY_LONG_PRESS_MS 4000
 
 #define LCD_INTERVAL 80
 #define DEFAULT_SET_POINT 350.0f
@@ -68,7 +69,6 @@ void drawProgressBar(int pct, int x, int y, int width)
 void printCentered(int row, const char *text)
 {
     int col = (20 - strlen(text)) / 2;
-
     lcd.setCursor(col, row);
     lcd.print(text);
 }
@@ -79,7 +79,7 @@ void printIntro()
     printCentered(1, "SOLDERING");
     printCentered(2, "STATION");
     printCentered(3, "by Thodoris");
-    delay(3000);
+    delay(2000);
     lcd.clear();
 }
 
@@ -99,6 +99,9 @@ void printIronInfo()
         break;
     case TUNING:
         lcd.print(" PID TUNING ");
+        break;
+    case SLEEP:
+        lcd.print("  SLEEPING  ");
         break;
     }
 
@@ -140,26 +143,38 @@ void tempDown()
     iron.decreaseSelectedTemp();
 }
 
-void tune()
+void tunePID()
 {
     iron.tune();
 }
 
 void toggleIron()
 {
-    if (iron.getStatus() == HEATING)
+    if (iron.getStatus() == IDLE)
     {
-        iron.setStatus(IDLE);
+        iron.setStatus(HEATING);
     }
     else
     {
-        iron.setStatus(HEATING);
+        iron.setStatus(IDLE);
+    }
+}
+
+void toggleSleep()
+{
+    if (iron.getStatus() == SLEEP)
+    {
+        iron.heaterWake();
+    }
+    else
+    {
+        iron.heaterSleep();
     }
 }
 
 void setup()
 {
-    Serial.begin(9600);
+    Serial.begin(115200);
 
     lcd.init();
     lcd.backlight();
@@ -168,22 +183,26 @@ void setup()
 
     printIntro();
 
-    tempUpButton.setup(TEMP_UP_BTN, INPUT_PULLUP, true);
+    tempUpButton.setup(TEMP_UP_BTN, INPUT, true);
     tempUpButton.setPressMs(BTN_PRESS_MS);
+    tempUpButton.setClickMs(BTN_CLICK_MS);
     tempUpButton.setLongPressIntervalMs(BTN_LONG_PRESS_INTERVAL_MS);
     tempUpButton.attachClick(tempUp);
     tempUpButton.attachDuringLongPress(tempUp);
 
-    tempDownButton.setup(TEMP_DOWN_BTN, INPUT_PULLUP, true);
+    tempDownButton.setup(TEMP_DOWN_BTN, INPUT, true);
     tempDownButton.setPressMs(BTN_PRESS_MS);
+    tempDownButton.setClickMs(BTN_CLICK_MS);
     tempDownButton.setLongPressIntervalMs(BTN_LONG_PRESS_INTERVAL_MS);
     tempDownButton.attachClick(tempDown);
     tempDownButton.attachDuringLongPress(tempDown);
 
-    functionButton.setup(FUNCTION_BTN, INPUT_PULLUP, true);
-    functionButton.setPressMs(BTN_LONG_PRESS_MS);
-    functionButton.attachClick(toggleIron);
-    functionButton.attachLongPressStart(tune);
+    functionButton.setup(FUNCTION_BTN, INPUT, true);
+    functionButton.setPressMs(BTN_VERY_LONG_PRESS_MS);
+    functionButton.setClickMs(BTN_CLICK_MS);
+    functionButton.attachLongPressStart(tunePID);
+    functionButton.attachDoubleClick(toggleIron);
+    functionButton.attachClick(toggleSleep);
 
     iron.init(OPAMP_ZERO_OUTPUT_V, OPAMP_GAIN, USER_MEASURED_VREF_MV);
     iron.setSelectedTemp(300);
@@ -200,12 +219,9 @@ void loop()
 
     iron.run(coldJunctionTemp);
 
-    if (iron.getStatus() != TUNING)
-    {
-        tempUpButton.tick();
-        tempDownButton.tick();
-        functionButton.tick();
-    }
+    tempUpButton.tick();
+    tempDownButton.tick();
+    functionButton.tick();
 
     if (currentMillis - previousMillis >= LCD_INTERVAL)
     {

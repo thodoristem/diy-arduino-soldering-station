@@ -25,7 +25,6 @@
 #define PID_TUNING_SETTLE_TIME_SEC 10
 #define PID_TUNING_SAMPLES 300
 
-#define HEATER_CHECK_PWM_THRESHOLD 120
 #define HEATER_CHECK_INTERVAL_SEC 5000
 #define HEATER_CHECK_MIN_TEMP_RIZE 2.0f
 
@@ -34,7 +33,8 @@ enum Status
     IDLE,
     HEATING,
     TUNING,
-    FAULT
+    FAULT,
+    SLEEP
 };
 
 struct Settings
@@ -63,6 +63,8 @@ private:
     float currentTemp;
     float minTemp;
     float maxTemp;
+
+    float selectedPreSleepTemp;
 
     float opAmpZeroOutputV = 0.0f;
     float opAmpGain = 100.0f;
@@ -118,6 +120,7 @@ public:
     void heaterOn();
     void heaterOff();
     void heaterSleep();
+    void heaterWake();
 
     float getHeaterOutput();
     float getHeaterOutputPct();
