@@ -271,6 +271,162 @@ void Iron::heaterWake()
     this->setSelectedTemp(this->selectedPreSleepTemp);
 }
 
+float Iron::readVoltage(uint8_t pin, int samples, byte skip, unsigned int sampleTimeUs, float vRef)
+{
+    int total = 0;
+
+    // Discard first few measurements
+    for (int i = 0; i < skip; i++)
+    {
+        analogRead(pin);
+    }
+
+    for (int i = 0; i < samples; i++)
+    {
+        delayMicroseconds(sampleTimeUs);
+        total += analogRead(pin);
+    }
+
+    return (float)total / samples * vRef / 1023.0f;
+}
+
+float Iron::readColdJunctionTemp(byte pin, float vRef, float fixedRes, float thermRes)
+{
+    float volts = Iron::readVoltage(
+        pin,
+        TEMP_MEASURE_SAMPLES,
+        TEMP_MEASURE_SAMPLES_TO_SKIP,
+        TEMP_MEASURE_SAMPLE_TIME_US,
+        vRef);
+
+    if (volts <= 0.0f || volts >= vRef)
+    {
+        return NAN;
+    }
+
+    float resistance = fixedRes * volts / (vRef - volts);
+    float invT = 1.0f / THERMISTOR_K + log(resistance / thermRes) / THERMISTOR_BETA;
+
+    return (1.0f / invT - 273.15f);
+}
+
+void Iron::readTemp()
+{
+    this->heaterOff();
+    float volts = Iron::readVoltage(
+        this->tempSensorPin,
+        TEMP_MEASURE_SAMPLES,
+        TEMP_MEASURE_SAMPLES_TO_SKIP,
+        TEMP_MEASURE_SAMPLE_TIME_US,
+        this->vRef);
+    this->heaterUpdate();
+
+    // Convert amplifier output to thermocouple millivolts.
+    float tcMilliVolts = (volts - this->opAmpZeroOutputV) * 1000.0f / this->opAmpGain;
+
+    // Library applies cold-junction compensation and
+    // converts thermocouple voltage to currentTemp.
+    this->currentTemp = this->tcType->getTemperature(tcMilliVolts, this->coldJunctionTemp);
+}
+
+float Iron::getSelectedTemp()
+{
+    return this->settings.selectedTemp;
+}
+
+void Iron::setSelectedTemp(float tempC)
+{
+    if (tempC < this->minTemp)
+    {
+        this->settings.selectedTemp = this->minTemp;
+    }
+    else if (tempC > this->maxTemp)
+    {
+        this->settings.selectedTemp = this->maxTemp;
+    }
+    else
+    {
+        this->settings.selectedTemp = tempC;
+    }
+}
+
+void Iron::increaseSelectedTemp()
+{
+    if (this->settings.selectedTemp < this->maxTemp)
+    {
+        this->settings.selectedTemp += TEMP_SELECT_STEP;
+    }
+    else
+    {
+        this->settings.selectedTemp = this->maxTemp;
+    }
+}
+
+void Iron::decreaseSelectedTemp()
+{
+    if (this->settings.selectedTemp > this->minTemp)
+    {
+        this->settings.selectedTemp -= TEMP_SELECT_STEP;
+    }
+    else
+    {
+        this->settings.selectedTemp = this->minTemp;
+    }
+}
+
+float Iron::getCurrentTemp()
+{
+    return this->currentTemp;
+}
+
+float Iron::getHeaterOutput()
+{
+    return this->heaterOutput;
+}
+
+float Iron::getHeaterOutputPct()
+{
+    return this->heaterOutput / this->maxOutput * 100;
+}
+
+float Iron::getColdJunctionTemp()
+{
+    return this->coldJunctionTemp;
+}
+
+void Iron::setColdJunctionTemp(float cjt)
+{
+    this->coldJunctionTemp = cjt;
+}
+
+float Iron::getVRef()
+{
+    return this->vRef;
+}
+
+void Iron::setVRef(float vRef)
+{
+    this->vRef = vRef;
+}
+
+void Iron::saveSettings()
+{
+    EEPROM.put(this->heaterOutputPin, this->settings);
+}
+
+void Iron::loadSettings()
+{
+    Settings tmp;
+
+    EEPROM.get(this->heaterOutputPin, tmp);
+
+    if (!isnan(tmp.selectedTemp) && !isnan(tmp.kp) && !isnan(tmp.ki) && !isnan(tmp.kd))
+    {
+        Serial.println("Loading settings from eeprom\n");
+        this->settings = tmp;
+    }
+}
+
 /**
  * @brief Sets the ADC clock prescaler on an ATmega328P Arduino Uno.
  *
@@ -477,6 +633,35 @@ void Iron::setPWMPrescaler(uint8_t pin, uint16_t prescale)
     }
 }
 
+/**
+ * @brief Reads the internal 1.1 V bandgap reference using the ADC.
+ *
+ * Configures the ADC to use AVCC as its reference voltage and selects
+ * the internal bandgap voltage as the ADC input.
+ *
+ * The returned ADC count represents the internal bandgap voltage
+ * measured relative to AVCC.
+ *
+ * @return Raw 10-bit ADC reading (0-1023).
+ *
+ * @note The ADC reading can be used to calculate the actual AVCC supply
+ *       voltage when the bandgap voltage is known or calibrated.
+ *
+ * @note The nominal internal bandgap voltage is approximately 1.1 V,
+ *       but its actual value varies between microcontrollers.
+ *
+ * @note For accurate VCC measurements, calibrate the bandgap voltage
+ *       against a multimeter-measured AVCC voltage and store the
+ *       calibrated value.
+ *
+ * @warning This function changes the ADC reference and input selection.
+ *          Other ADC operations may be affected until reconfigured.
+ *
+ * @warning This implementation assumes an ATmega328P-based Arduino Uno.
+ *
+ * @example
+ * long bandgapADC = Iron::readBandGapADC();
+ */
 long Iron::readBandGapADC()
 {
     // Measure internal bandgap against AVCC
@@ -498,7 +683,36 @@ long Iron::readBandGapADC()
 
     return (high << 8) | low;
 }
-
+/**
+ * @brief Measures the AVCC supply voltage using the internal bandgap.
+ *
+ * Selects the internal nominal 1.1 V bandgap as the ADC input and
+ * measures it relative to AVCC. The measured ADC count is then used
+ * to estimate the AVCC supply voltage.
+ *
+ * @param bandGapVoltage Calibrated internal bandgap voltage in millivolts.
+ *                       For example, 1098 means 1.098 V.
+ *
+ * @return Estimated AVCC supply voltage in volts.
+ *         Returns 0.0 if the ADC reading is zero.
+ *
+ * @note The calculation uses:
+ *
+ *       VCC (mV) = bandGapVoltage (mV) * 1023 / ADC reading
+ *
+ * @note The bandgap voltage should be calibrated for the individual
+ *       microcontroller for best accuracy. Using 1100 mV assumes the
+ *       bandgap is exactly 1.100 V and can cause measurement error.
+ *
+ * @note This function changes the ADC reference and input selection.
+ *       Other ADC operations may be affected until reconfigured.
+ *
+ * @warning This implementation assumes an ATmega328P-based Arduino Uno.
+ *
+ * @example
+ * float vcc = Iron::readVccVolts(1098);
+ * // Example result: approximately 4.95 V
+ */
 float Iron::readVccVolts(long bandGapVoltage)
 {
     // Select internal 1.1 V bandgap, measured against AVCC
@@ -520,160 +734,4 @@ float Iron::readVccVolts(long bandGapVoltage)
     }
 
     return bandGapVoltage * 1023L / adc / 1000.0f;
-}
-
-float Iron::readVoltage(uint8_t pin, int samples, byte skip, unsigned int sampleTimeUs, float vRef)
-{
-    int total = 0;
-
-    // Discard first few measurements
-    for (int i = 0; i < skip; i++)
-    {
-        analogRead(pin);
-    }
-
-    for (int i = 0; i < samples; i++)
-    {
-        delayMicroseconds(sampleTimeUs);
-        total += analogRead(pin);
-    }
-
-    return (float)total / samples * vRef / 1023.0f;
-}
-
-float Iron::readColdJunctionTemp(byte pin, float vRef, float fixedRes, float thermRes)
-{
-    float volts = Iron::readVoltage(
-        pin,
-        TEMP_MEASURE_SAMPLES,
-        TEMP_MEASURE_SAMPLES_TO_SKIP,
-        TEMP_MEASURE_SAMPLE_TIME_US,
-        vRef);
-
-    if (volts <= 0.0f || volts >= vRef)
-    {
-        return NAN;
-    }
-
-    float resistance = fixedRes * volts / (vRef - volts);
-    float invT = 1.0f / THERMISTOR_K + log(resistance / thermRes) / THERMISTOR_BETA;
-
-    return (1.0f / invT - 273.15f);
-}
-
-void Iron::readTemp()
-{
-    this->heaterOff();
-    float volts = Iron::readVoltage(
-        this->tempSensorPin,
-        TEMP_MEASURE_SAMPLES,
-        TEMP_MEASURE_SAMPLES_TO_SKIP,
-        TEMP_MEASURE_SAMPLE_TIME_US,
-        this->vRef);
-    this->heaterUpdate();
-
-    // Convert amplifier output to thermocouple millivolts.
-    float tcMilliVolts = (volts - this->opAmpZeroOutputV) * 1000.0f / this->opAmpGain;
-
-    // Library applies cold-junction compensation and
-    // converts thermocouple voltage to currentTemp.
-    this->currentTemp = this->tcType->getTemperature(tcMilliVolts, this->coldJunctionTemp);
-}
-
-float Iron::getSelectedTemp()
-{
-    return this->settings.selectedTemp;
-}
-
-void Iron::setSelectedTemp(float tempC)
-{
-    if (tempC < this->minTemp)
-    {
-        this->settings.selectedTemp = this->minTemp;
-    }
-    else if (tempC > this->maxTemp)
-    {
-        this->settings.selectedTemp = this->maxTemp;
-    }
-    else
-    {
-        this->settings.selectedTemp = tempC;
-    }
-}
-
-void Iron::increaseSelectedTemp()
-{
-    if (this->settings.selectedTemp < this->maxTemp)
-    {
-        this->settings.selectedTemp += TEMP_SELECT_STEP;
-    }
-    else
-    {
-        this->settings.selectedTemp = this->maxTemp;
-    }
-}
-
-void Iron::decreaseSelectedTemp()
-{
-    if (this->settings.selectedTemp > this->minTemp)
-    {
-        this->settings.selectedTemp -= TEMP_SELECT_STEP;
-    }
-    else
-    {
-        this->settings.selectedTemp = this->minTemp;
-    }
-}
-
-float Iron::getCurrentTemp()
-{
-    return this->currentTemp;
-}
-
-float Iron::getHeaterOutput()
-{
-    return this->heaterOutput;
-}
-
-float Iron::getHeaterOutputPct()
-{
-    return this->heaterOutput / this->maxOutput * 100;
-}
-
-float Iron::getColdJunctionTemp()
-{
-    return this->coldJunctionTemp;
-}
-
-void Iron::setColdJunctionTemp(float cjt)
-{
-    this->coldJunctionTemp = cjt;
-}
-
-float Iron::getVRef()
-{
-    return this->vRef;
-}
-
-void Iron::setVRef(float vRef)
-{
-    this->vRef = vRef;
-}
-
-void Iron::saveSettings()
-{
-    EEPROM.put(this->heaterOutputPin, this->settings);
-}
-
-void Iron::loadSettings()
-{
-    Settings tmp;
-
-    EEPROM.get(this->heaterOutputPin, tmp);
-
-    if (!isnan(tmp.selectedTemp) && !isnan(tmp.kp) && !isnan(tmp.ki) && !isnan(tmp.kd))
-    {
-        Serial.println("Loading settings from eeprom\n");
-        this->settings = tmp;
-    }
 }
