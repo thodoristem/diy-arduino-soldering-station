@@ -102,9 +102,11 @@ void Iron::run(float cjt)
 {
     this->coldJunctionTemp = cjt;
 
+    this->readTemp();
+    this->heaterCheck();
+
     if (this->getStatus() == TUNING)
     {
-        this->pid->SetMode(QuickPID::Control::manual);
         this->runPIDTuning();
     }
     else
@@ -115,14 +117,11 @@ void Iron::run(float cjt)
 
 void Iron::runPID()
 {
-    this->readTemp();
-    this->heaterCheck();
-
     if (this->status == HEATING || this->status == TUNING || this->status == SLEEP)
     {
         if (this->pid->Compute())
         {
-            this->heaterOn();
+            this->heaterUpdate();
         }
     }
     else
@@ -137,8 +136,10 @@ void Iron::runPIDTuning()
     switch (this->tuner->Run())
     {
     case this->tuner->sample: // active once per sample during test
-        this->readTemp();
-        this->tuner->plotter(this->getCurrentTemp(), this->getHeaterOutput(), this->getSelectedTemp(), 1, 3);
+        this->tuner->plotter(
+            this->getCurrentTemp(),
+            this->getHeaterOutput(),
+            this->getSelectedTemp(), 1, 3);
         break;
     case this->tuner->tunings:       // active just once when sTune is done
         this->tuner->GetAutoTunings( // sketch variables updated by sTune
@@ -150,12 +151,16 @@ void Iron::runPIDTuning()
             this->settings.kp,
             this->settings.ki,
             this->settings.kd);
+        this->pid->Initialize();
         this->saveSettings();
         this->setStatus(HEATING);
         break;
     case this->tuner->runPid: // active once per sample after tunings
         this->runPID();
-        this->tuner->plotter(this->getCurrentTemp(), this->getHeaterOutput(), this->getSelectedTemp(), 1, 3);
+        this->tuner->plotter(
+            this->getCurrentTemp(),
+            this->getHeaterOutput(),
+            this->getSelectedTemp(), 1, 3);
         break;
     }
 }
@@ -163,6 +168,7 @@ void Iron::runPIDTuning()
 void Iron::tune()
 {
     this->setStatus(TUNING);
+    this->pid->SetMode(QuickPID::Control::manual);
     Serial.println("\nPID Tuning started\n");
 }
 
@@ -176,9 +182,30 @@ void Iron::setStatus(Status status)
     this->status = status;
 }
 
+void Iron::toggle()
+{
+    switch (this->getStatus())
+    {
+    case HEATING:
+        this->setStatus(IDLE);
+        break;
+    case IDLE:
+        this->setStatus(HEATING);
+        break;
+    case TUNING:
+        this->setStatus(IDLE);
+        this->pid->SetMode(QuickPID::Control::automatic);
+        this->pid->Initialize();
+        break;
+    default:
+        this->setStatus(HEATING);
+        break;
+    }
+}
+
 void Iron::heaterCheck()
 {
-    if (this->getHeaterOutput() < this->maxOutput / 1.5)
+    if (this->getHeaterOutput() < this->maxOutput)
     {
         this->heaterCheckActive = false;
         return;
@@ -207,7 +234,7 @@ void Iron::heaterCheck()
     }
 }
 
-void Iron::heaterOn()
+void Iron::heaterUpdate()
 {
     if (this->outputReversed)
     {
@@ -414,7 +441,7 @@ void Iron::readTemp()
         TEMP_MEASURE_SAMPLES_TO_SKIP,
         TEMP_MEASURE_SAMPLE_TIME_US,
         this->vRef);
-    this->heaterOn();
+    this->heaterUpdate();
 
     // Convert amplifier output to thermocouple millivolts.
     float tcMilliVolts = (volts - this->opAmpZeroOutputV) * 1000.0f / this->opAmpGain;
@@ -507,7 +534,6 @@ void Iron::setVRef(float vRef)
 void Iron::saveSettings()
 {
     EEPROM.put(this->heaterOutputPin, this->settings);
-    delay(1000);
 }
 
 void Iron::loadSettings()

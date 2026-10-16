@@ -78,7 +78,7 @@ private:
     bool heaterCheckActive = false;
 
     Settings settings;
-    Status status = HEATING;
+    Status status = IDLE;
 
 public:
     Iron(
@@ -117,10 +117,12 @@ public:
     float getColdJunctionTemp();
     void setColdJunctionTemp(float cjt);
 
-    void heaterOn();
+    void heaterUpdate();
     void heaterOff();
     void heaterSleep();
     void heaterWake();
+
+    void toggle();
 
     float getHeaterOutput();
     float getHeaterOutputPct();
