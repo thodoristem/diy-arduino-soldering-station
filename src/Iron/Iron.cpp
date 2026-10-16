@@ -238,20 +238,11 @@ void Iron::heaterUpdate()
 {
     if (this->outputReversed)
     {
-        analogWrite(
-            this->heaterOutputPin,
-            (int)map(
-                this->heaterOutput,
-                this->minOutput,
-                this->maxOutput,
-                this->maxOutput,
-                this->minOutput));
+        analogWrite(this->heaterOutputPin, 255 - this->heaterOutput);
     }
     else
     {
-        analogWrite(
-            this->heaterOutputPin,
-            (int)this->heaterOutput);
+        analogWrite(this->heaterOutputPin, (int)this->heaterOutput);
     }
 }
 
@@ -280,6 +271,142 @@ void Iron::heaterWake()
     this->setSelectedTemp(this->selectedPreSleepTemp);
 }
 
+/**
+ * @brief Sets the ADC clock prescaler on an ATmega328P Arduino Uno.
+ *
+ * Configures the ADC clock divider relative to the CPU clock.
+ * A lower prescaler increases ADC conversion speed but may reduce
+ * measurement accuracy and effective resolution.
+ *
+ * @param prescaler ADC clock divider. Supported values:
+ *                  2, 4, 8, 16, 32, 64, 128.
+ *
+ * @return true  if the prescaler was accepted and configured.
+ * @return false if the prescaler value is unsupported.
+ *
+ * @note The ADC clock is derived from the CPU clock.
+ *       For a 16 MHz Arduino Uno:
+ *
+ *       Prescaler | ADC clock | Approx. conversion time
+ *       ----------|-----------|------------------------
+ *             2   |   8 MHz   |       1.6 us
+ *             4   |   4 MHz   |       3.3 us
+ *             8   |   2 MHz   |       6.5 us
+ *            16   |   1 MHz   |        13 us
+ *            32   | 500 kHz   |        26 us
+ *            64   | 250 kHz   |        52 us
+ *           128   | 125 kHz   |       104 us
+ *
+ * @note The prescaler is global to the ADC, not specific to an analog pin.
+ *       All analog inputs use the same ADC clock.
+ *
+ * @note The function modifies only the ADC prescaler bits in ADCSRA.
+ *
+ * @warning The ADC is specified for full 10-bit performance at a clock
+ *          of approximately 50-200 kHz. Faster settings may reduce
+ *          accuracy and effective resolution.
+ *
+ * @warning This function is specific to the ATmega328P and should not
+ *          be assumed to work on other Arduino boards.
+ *
+ * @example
+ * setADCPrescaler(128);  // Default: 125 kHz ADC clock
+ * setADCPrescaler(64);   // Faster: 250 kHz ADC clock
+ * setADCPrescaler(32);   // Faster still: 500 kHz ADC clock
+ */
+bool Iron::setADCPrescaler(uint8_t prescaler)
+{
+    uint8_t bits;
+
+    switch (prescaler)
+    {
+    case 2:
+        bits = 1;
+        break;
+    case 4:
+        bits = 2;
+        break;
+    case 8:
+        bits = 3;
+        break;
+    case 16:
+        bits = 4;
+        break;
+    case 32:
+        bits = 5;
+        break;
+    case 64:
+        bits = 6;
+        break;
+    case 128:
+        bits = 7;
+        break;
+    default:
+        return false;
+    }
+
+    // Update only the ADC prescaler bits
+    ADCSRA = (ADCSRA & 0b11111000) | bits;
+
+    return true;
+}
+
+/**
+ * @brief Sets the hardware timer prescaler for an Arduino Uno PWM pin.
+ *
+ * Changes the timer clock divider to adjust the PWM frequency.
+ * A lower prescaler increases the PWM frequency; a higher prescaler
+ * decreases it.
+ *
+ * @param pin      Arduino Uno PWM pin: 3, 5, 6, 9, 10, or 11.
+ * @param prescale Requested timer prescaler.
+ *
+ * Supported prescalers and approximate PWM frequencies:
+ *
+ * Timer0 - Pins 5 and 6 (fast PWM, default Arduino mode):
+ *   Prescaler  1:  62500 Hz (62.5 kHz)
+ *   Prescaler  8:   7812 Hz (7.81 kHz)
+ *   Prescaler 64:    977 Hz
+ *   Prescaler 256:   244 Hz
+ *   Prescaler 1024:   61 Hz
+ *
+ * Timer1 - Pins 9 and 10 (standard Arduino 8-bit phase-correct PWM):
+ *   Prescaler  1:  31373 Hz (31.37 kHz)
+ *   Prescaler  8:   3922 Hz (3.92 kHz)
+ *   Prescaler 64:    490 Hz
+ *   Prescaler 256:   122 Hz
+ *   Prescaler 1024:   31 Hz
+ *
+ * Timer2 - Pins 3 and 11 (fast PWM, default Arduino mode):
+ *   Prescaler  1:  62500 Hz (62.5 kHz)
+ *   Prescaler  8:   7812 Hz (7.81 kHz)
+ *   Prescaler 32:   1953 Hz (1.95 kHz)
+ *   Prescaler 64:    977 Hz
+ *   Prescaler 128:   488 Hz
+ *   Prescaler 256:   244 Hz
+ *   Prescaler 1024:   61 Hz
+ *
+ * @note Frequencies assume a 16 MHz CPU clock and the standard Arduino
+ *       Uno timer waveform-generation modes. Actual frequency depends
+ *       on the timer mode and TOP value.
+ *
+ * @note Prescalers are shared by both PWM pins using the same timer:
+ *       Timer0: pins 5 and 6
+ *       Timer1: pins 9 and 10
+ *       Timer2: pins 3 and 11
+ *
+ * @warning Changing Timer0 affects millis(), micros(), and delay().
+ * @warning Changing Timer1 may interfere with libraries such as Servo.
+ * @warning Changing a timer prescaler affects other PWM outputs on that
+ *          timer, not just the pin passed to this function.
+ *
+ * @note Unsupported pins or prescaler values are ignored.
+ *
+ * @example
+ * setPWMPrescaler(9, 1);    // Pin 9: approximately 31.37 kHz
+ * setPWMPrescaler(9, 64);   // Pin 9: approximately 490 Hz
+ * setPWMPrescaler(11, 32);  // Pin 11: approximately 1.95 kHz
+ */
 void Iron::setPWMPrescaler(uint8_t pin, uint16_t prescale)
 {
     byte mode;
@@ -392,24 +519,26 @@ float Iron::readVccVolts(long bandGapVoltage)
         return 0;
     }
 
-    // Replace 1100 with your calibrated bandgap voltage in mV
-    return (bandGapVoltage * 1023L / adc) / 1000.0f;
+    return bandGapVoltage * 1023L / adc / 1000.0f;
 }
 
 float Iron::readVoltage(uint8_t pin, int samples, byte skip, unsigned int sampleTimeUs, float vRef)
 {
     int total = 0;
 
-    for (int i = 0; i < samples + skip; i++)
+    // Discard first few measurements
+    for (int i = 0; i < skip; i++)
     {
-        delayMicroseconds(sampleTimeUs);
-        if (i > skip)
-        {
-            total += analogRead(pin);
-        }
+        analogRead(pin);
     }
 
-    return total / samples * vRef / 1023.0f;
+    for (int i = 0; i < samples; i++)
+    {
+        delayMicroseconds(sampleTimeUs);
+        total += analogRead(pin);
+    }
+
+    return (float)total / samples * vRef / 1023.0f;
 }
 
 float Iron::readColdJunctionTemp(byte pin, float vRef, float fixedRes, float thermRes)

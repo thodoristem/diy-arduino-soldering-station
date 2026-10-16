@@ -15,8 +15,8 @@
 #define THERMISTOR_BETA 3950.0f
 
 #define TEMP_MEASURE_SAMPLES 30
-#define TEMP_MEASURE_SAMPLES_TO_SKIP 2
-#define TEMP_MEASURE_SAMPLE_TIME_US 2
+#define TEMP_MEASURE_SAMPLES_TO_SKIP 5
+#define TEMP_MEASURE_SAMPLE_TIME_US 5
 
 #define PID_SAMPLE_TIME_US 100000
 
@@ -95,6 +95,7 @@ public:
     static float readVoltage(uint8_t pin, int samples, byte skip, unsigned int sampleTimeUs, float vRef);
     static float readColdJunctionTemp(uint8_t pin, float vRef, float fixedRes, float thermRes);
     static void setPWMPrescaler(uint8_t pin, uint16_t prescale);
+    static bool setADCPrescaler(uint8_t prescaler);
 
     void init(float opAmpZeroOutputV, float opAmpGain, float userMeasuredVRef);
     void run(float cjt);

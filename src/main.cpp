@@ -4,27 +4,27 @@
 #include <Iron/Iron.h>
 #include <OneButton.h>
 
-#define MIN_HEATER_OUTPUT 0
-#define MAX_HEATER_OUTPUT 250
-#define MIN_SELECTABLE_TEMP 100
-#define MAX_SELECTABLE_TEMP 400
 #define OPAMP_ZERO_OUTPUT_V 0.058f
 #define OPAMP_GAIN 140.0f
 #define USER_MEASURED_VREF_MV 4898.0f
 
 #define HEATER_A_PIN 9
 #define TC_A_PIN A0
+#define MIN_HEATER_OUTPUT 0
+#define MAX_HEATER_OUTPUT 250
+#define MIN_SELECTABLE_TEMP 100
+#define MAX_SELECTABLE_TEMP 400
 
 #define THERMISTOR_PIN A1
 
-#define BTN_DEBOUNCE_MS 1
 #define TEMP_UP_BTN 4
 #define TEMP_DOWN_BTN 5
 #define FUNCTION_BTN 6
 
-#define BTN_CLICK_MS 10
+#define BTN_DEBOUNCE_MS 0
+#define BTN_CLICK_MS 0
 #define BTN_PRESS_MS 300
-#define BTN_LONG_PRESS_INTERVAL_MS 100
+#define BTN_LONG_PRESS_INTERVAL_MS 200
 #define BTN_VERY_LONG_PRESS_MS 3000
 
 #define LCD_INTERVAL 80
@@ -167,17 +167,19 @@ void setup()
     printIntro();
 
     tempUpButton.setup(TEMP_UP_BTN, INPUT, true);
+    tempUpButton.setClickMs(BTN_CLICK_MS);
     tempUpButton.setDebounceMs(BTN_DEBOUNCE_MS);
     tempUpButton.setPressMs(BTN_PRESS_MS);
     tempUpButton.setLongPressIntervalMs(BTN_LONG_PRESS_INTERVAL_MS);
-    tempUpButton.attachPress(tempUp);
+    tempUpButton.attachClick(tempUp);
     tempUpButton.attachDuringLongPress(tempUp);
 
     tempDownButton.setup(TEMP_DOWN_BTN, INPUT, true);
+    tempDownButton.setClickMs(BTN_CLICK_MS);
     tempDownButton.setDebounceMs(BTN_DEBOUNCE_MS);
     tempDownButton.setPressMs(BTN_PRESS_MS);
     tempDownButton.setLongPressIntervalMs(BTN_LONG_PRESS_INTERVAL_MS);
-    tempDownButton.attachPress(tempDown);
+    tempDownButton.attachClick(tempDown);
     tempDownButton.attachDuringLongPress(tempDown);
 
     functionButton.setup(FUNCTION_BTN, INPUT, true);
@@ -189,7 +191,9 @@ void setup()
 
     iron.init(OPAMP_ZERO_OUTPUT_V, OPAMP_GAIN, USER_MEASURED_VREF_MV);
     iron.setSelectedTemp(300);
+
     Iron::setPWMPrescaler(HEATER_A_PIN, 8);
+    Iron::setADCPrescaler(32);
 }
 
 unsigned long previousMillis = 0;
