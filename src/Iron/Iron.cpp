@@ -4,6 +4,7 @@
 Iron::Iron(
     uint8_t heaterOutputPin,
     uint8_t tempSensorPin,
+    uint8_t buzzerPin,
     AbstractThermocouple *tcType,
     int minOutput,
     int maxOutput,
@@ -12,6 +13,7 @@ Iron::Iron(
 {
     this->heaterOutputPin = heaterOutputPin;
     this->tempSensorPin = tempSensorPin;
+    this->buzzerPin = buzzerPin;
     this->tcType = tcType;
     this->minOutput = minOutput;
     this->maxOutput = maxOutput;
@@ -96,6 +98,8 @@ void Iron::init(float opAmpZeroOutputV, float opAmpGain, float userMeasuredVRefM
         PID_TUNING_SAMPLES);
 
     this->tuner->SetEmergencyStop(this->maxTemp);
+
+    this->playTone(SoundEvent::SOUND_INIT);
 }
 
 void Iron::run(float cjt)
@@ -111,6 +115,16 @@ void Iron::run(float cjt)
     }
     else
     {
+        if (!this->heaterTempReached && this->getCurrentTemp() >= this->getSelectedTemp())
+        {
+            this->playTone(SoundEvent::SOUND_TEMP_REACHED);
+            this->heaterTempReached = true;
+        }
+        else if (this->getCurrentTemp() < this->getSelectedTemp() - 10)
+        {
+            this->heaterTempReached = false;
+        }
+
         this->runPID();
     }
 }
@@ -170,9 +184,56 @@ void Iron::tune()
     this->setStatus(TUNING);
     this->pid->SetMode(QuickPID::Control::manual);
     Serial.println("\nPID Tuning started\n");
+    this->playTone(SoundEvent::SOUND_TUNING);
 }
 
-Status Iron::getStatus()
+void Iron::playTone(SoundEvent event)
+{
+    switch (event)
+    {
+    case SOUND_INIT:
+        tone(this->buzzerPin, 800, 100);
+        delay(150);
+        tone(this->buzzerPin, 1200, 100);
+        delay(150);
+        tone(this->buzzerPin, 1600, 150);
+        break;
+    case SOUND_TEMP_CHANGE:
+        tone(this->buzzerPin, 2200, 70);
+        break;
+    case SOUND_TEMP_REACHED:
+        tone(this->buzzerPin, 1200, 100);
+        delay(150);
+        tone(this->buzzerPin, 1800, 180);
+        break;
+    case SOUND_ERROR:
+        for (uint8_t i = 0; i < 3; i++)
+        {
+            tone(this->buzzerPin, 500, 180);
+            delay(260);
+        }
+        break;
+    case SOUND_HEATER_ON:
+        tone(this->buzzerPin, 1600, 70);
+        break;
+    case SOUND_HEATER_OFF:
+        tone(this->buzzerPin, 1000, 100);
+        break;
+    case SOUND_TUNING:
+        tone(this->buzzerPin, 900, 80);
+        delay(110);
+        tone(this->buzzerPin, 1300, 80);
+        delay(110);
+        tone(this->buzzerPin, 1800, 120);
+        break;
+    case SOUND_NONE:
+    default:
+        noTone(this->buzzerPin);
+        break;
+    }
+}
+
+Iron::Status Iron::getStatus()
 {
     return this->status;
 }
@@ -188,17 +249,21 @@ void Iron::toggle()
     {
     case HEATING:
         this->setStatus(IDLE);
+        this->playTone(SoundEvent::SOUND_HEATER_OFF);
         break;
     case IDLE:
         this->setStatus(HEATING);
+        this->playTone(SoundEvent::SOUND_HEATER_ON);
         break;
     case TUNING:
         this->setStatus(IDLE);
         this->pid->SetMode(QuickPID::Control::automatic);
         this->pid->Initialize();
+        this->playTone(SoundEvent::SOUND_HEATER_OFF);
         break;
     default:
         this->setStatus(HEATING);
+        this->playTone(SoundEvent::SOUND_HEATER_ON);
         break;
     }
 }
@@ -226,6 +291,7 @@ void Iron::heaterCheck()
         if (tempDiff < HEATER_CHECK_MIN_TEMP_RIZE)
         {
             this->status = FAULT;
+            this->playTone(SoundEvent::SOUND_ERROR);
         }
 
         // Start a new observation window.
@@ -360,6 +426,7 @@ void Iron::increaseSelectedTemp()
     {
         this->settings.selectedTemp = this->maxTemp;
     }
+    this->playTone(SoundEvent::SOUND_TEMP_CHANGE);
 }
 
 void Iron::decreaseSelectedTemp()
@@ -372,6 +439,7 @@ void Iron::decreaseSelectedTemp()
     {
         this->settings.selectedTemp = this->minTemp;
     }
+    this->playTone(SoundEvent::SOUND_TEMP_CHANGE);
 }
 
 float Iron::getCurrentTemp()

@@ -28,15 +28,6 @@
 #define HEATER_CHECK_INTERVAL_SEC 5000
 #define HEATER_CHECK_MIN_TEMP_RIZE 2.0f
 
-enum Status
-{
-    IDLE,
-    HEATING,
-    TUNING,
-    FAULT,
-    SLEEP
-};
-
 struct Settings
 {
     float selectedTemp = 200.0f;
@@ -47,6 +38,29 @@ struct Settings
 
 class Iron
 {
+
+public:
+    enum Status : uint8_t
+    {
+        IDLE,
+        HEATING,
+        TUNING,
+        FAULT,
+        SLEEP
+    };
+
+    enum SoundEvent : uint8_t
+    {
+        SOUND_NONE,
+        SOUND_INIT,
+        SOUND_TEMP_CHANGE,
+        SOUND_TEMP_REACHED,
+        SOUND_ERROR,
+        SOUND_HEATER_ON,
+        SOUND_HEATER_OFF,
+        SOUND_TUNING
+    };
+
 private:
     AbstractThermocouple *tcType;
     QuickPID *pid;
@@ -54,6 +68,7 @@ private:
 
     uint8_t heaterOutputPin;
     uint8_t tempSensorPin;
+    uint8_t buzzerPin;
 
     float heaterOutput;
     bool outputReversed = true;
@@ -63,6 +78,7 @@ private:
     float currentTemp;
     float minTemp;
     float maxTemp;
+    bool heaterTempReached = false;
 
     float selectedPreSleepTemp;
 
@@ -78,34 +94,30 @@ private:
     bool heaterCheckActive = false;
 
     Settings settings;
-    Status status = IDLE;
+    Iron::Status status = IDLE;
 
 public:
     Iron(
         uint8_t heaterOutputPin,
         uint8_t tempSensorPin,
+        uint8_t buzzerPin,
         AbstractThermocouple *tcType,
         int minOutput,
         int maxOutput,
         int minTemp,
         int maxTemp);
 
-    static long readBandGapADC();
-    static float readVccVolts(long bandGapVoltage);
-    static float readVoltage(uint8_t pin, int samples, byte skip, unsigned int sampleTimeUs, float vRef);
-    static float readColdJunctionTemp(uint8_t pin, float vRef, float fixedRes, float thermRes);
-    static void setPWMPrescaler(uint8_t pin, uint16_t prescale);
-    static bool setADCPrescaler(uint8_t prescaler);
-
     void init(float opAmpZeroOutputV, float opAmpGain, float userMeasuredVRef);
     void run(float cjt);
     void runPID();
     void runPIDTuning();
     void tune();
+    void playTone(SoundEvent event);
 
     Status getStatus();
     void setStatus(Status status);
     void heaterCheck();
+    void toggle();
 
     float getSelectedTemp();
     void setSelectedTemp(float tempC);
@@ -123,8 +135,6 @@ public:
     void heaterSleep();
     void heaterWake();
 
-    void toggle();
-
     float getHeaterOutput();
     float getHeaterOutputPct();
 
@@ -133,5 +143,12 @@ public:
 
     void saveSettings();
     void loadSettings();
+
+    static long readBandGapADC();
+    static float readVccVolts(long bandGapVoltage);
+    static float readVoltage(uint8_t pin, int samples, byte skip, unsigned int sampleTimeUs, float vRef);
+    static float readColdJunctionTemp(uint8_t pin, float vRef, float fixedRes, float thermRes);
+    static void setPWMPrescaler(uint8_t pin, uint16_t prescale);
+    static bool setADCPrescaler(uint8_t prescaler);
 };
 #endif

@@ -27,6 +27,8 @@
 #define BTN_LONG_PRESS_INTERVAL_MS 200
 #define BTN_VERY_LONG_PRESS_MS 3000
 
+#define BUZZER_PIN 2
+
 #define LCD_INTERVAL 80
 #define DEFAULT_SET_POINT 350.0f
 
@@ -40,6 +42,7 @@ OneButton functionButton;
 TypeE thermocouple;
 Iron iron(HEATER_A_PIN,
           TC_A_PIN,
+          BUZZER_PIN,
           &thermocouple,
           MIN_HEATER_OUTPUT,
           MAX_HEATER_OUTPUT,
@@ -90,19 +93,19 @@ void printIronInfo()
     lcd.setCursor(4, 0);
     switch (iron.getStatus())
     {
-    case IDLE:
+    case Iron::IDLE:
         lcd.print("    IDLE    ");
         break;
-    case HEATING:
+    case Iron::HEATING:
         lcd.print(" HEATER ON! ");
         break;
-    case FAULT:
+    case Iron::FAULT:
         lcd.print("   ERROR!   ");
         break;
-    case TUNING:
+    case Iron::TUNING:
         lcd.print(" PID TUNING ");
         break;
-    case SLEEP:
+    case Iron::SLEEP:
         lcd.print("  STAND BY  ");
         break;
     }
@@ -130,8 +133,8 @@ void printCommonInfo()
     sprintf(printBuffer, "%2d%cC", (int)coldJunctionTemp, (char)223);
     lcd.print(printBuffer);
 
-    lcd.setCursor(0, 1);
-    lcd.print(iron.getVRef(), 3);
+    // lcd.setCursor(0, 1);
+    // lcd.print(iron.getVRef(), 3);
     // lcd.print("V");
 }
 
