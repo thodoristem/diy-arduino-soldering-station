@@ -71,16 +71,15 @@ void Iron::init(float opAmpZeroOutputV, float opAmpGain, float userMeasuredVRefM
         this->settings.kp,
         this->settings.ki,
         this->settings.kd,
-        QuickPID::pMode::pOnError,   /* pOnError, pOnMeas, pOnErrorMeas */
-        QuickPID::dMode::dOnMeas,    /* dOnError, dOnMeas */
-        QuickPID::iAwMode::iAwClamp, /* iAwCondition, iAwClamp, iAwOff */
+        QuickPID::pMode::pOnError,
+        QuickPID::dMode::dOnMeas,
+        QuickPID::iAwMode::iAwClamp,
         QuickPID::Action::direct);
 
     this->pid->SetMode(QuickPID::Control::automatic);
     this->pid->SetOutputLimits(this->minOutput, this->maxOutput);
     this->pid->SetSampleTimeUs(PID_SAMPLE_TIME_US);
 
-    // sTune: open-loop step-response autotuner
     this->tuner = new sTune(
         &this->currentTemp,
         &this->heaterOutput,
@@ -120,9 +119,19 @@ void Iron::run(float cjt)
             this->playTone(SoundEvent::SOUND_TEMP_REACHED);
             this->heaterTempReached = true;
         }
-        else if (this->getCurrentTemp() < this->getSelectedTemp() - 10)
+        else if (!this->heaterTempReachedRev && this->getCurrentTemp() <= this->getSelectedTemp())
+        {
+            this->playTone(SoundEvent::SOUND_TEMP_REACHED);
+            this->heaterTempReachedRev = true;
+        }
+
+        if (this->getCurrentTemp() < this->getSelectedTemp() - 10)
         {
             this->heaterTempReached = false;
+        }
+        else if (this->getCurrentTemp() > this->getSelectedTemp() + 10)
+        {
+            this->heaterTempReachedRev = false;
         }
 
         this->runPID();

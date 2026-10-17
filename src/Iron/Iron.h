@@ -31,9 +31,9 @@
 struct Settings
 {
     float selectedTemp = 200.0f;
-    float kp = 2.0f;
-    float ki = 0.05f;
-    float kd = 10.0f;
+    float kp = 18.7727f;
+    float ki = 0.0089f;
+    float kd = 0.9862f;
 };
 
 class Iron
@@ -79,6 +79,7 @@ private:
     float minTemp;
     float maxTemp;
     bool heaterTempReached = false;
+    bool heaterTempReachedRev = true;
 
     float selectedPreSleepTemp;
 
