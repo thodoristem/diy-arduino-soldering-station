@@ -142,7 +142,16 @@ void Iron::runPID()
 {
     if (this->status == HEATING || this->status == TUNING || this->status == SLEEP)
     {
-        if (this->pid->Compute())
+        /**
+         * Run the heater half power to half the amperage
+         * and avoid current spike at cold start until 100C.
+         */
+        if (this->getCurrentTemp() < 100)
+        {
+            this->heaterOutput = this->maxOutput / 2.0f;
+            this->heaterUpdate();
+        }
+        else if (this->pid->Compute())
         {
             this->heaterUpdate();
         }

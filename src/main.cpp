@@ -17,9 +17,9 @@
 
 #define THERMISTOR_PIN A1
 
-#define TEMP_UP_BTN 4
-#define TEMP_DOWN_BTN 5
-#define FUNCTION_BTN 6
+#define TEMP_UP_BTN 6
+#define TEMP_DOWN_BTN 4
+#define FUNCTION_BTN 5
 
 #define BTN_DEBOUNCE_MS 0
 #define BTN_CLICK_MS 0
