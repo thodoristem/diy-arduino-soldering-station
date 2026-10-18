@@ -93,6 +93,9 @@ void printIronInfo()
     lcd.setCursor(4, 0);
     switch (iron.getStatus())
     {
+    case Iron::COLD_START:
+        lcd.print(" COLD START ");
+        break;
     case Iron::IDLE:
         lcd.print("    IDLE    ");
         break;

@@ -140,19 +140,19 @@ void Iron::run(float cjt)
 
 void Iron::runPID()
 {
-    if (this->status == HEATING || this->status == TUNING || this->status == SLEEP)
+    if (this->status != FAULT && this->status != IDLE)
     {
-        /**
-         * Run the heater half power to half the amperage
-         * and avoid current spike at cold start until 100C.
-         */
-        if (this->getCurrentTemp() < 100)
+        if (this->pid->Compute())
         {
-            this->heaterOutput = this->maxOutput / 2.0f;
-            this->heaterUpdate();
-        }
-        else if (this->pid->Compute())
-        {
+            /**
+             * Run the heater half power to half the amperage
+             * and avoid current spike at cold start until 100C.
+             */
+            if (this->getCurrentTemp() < 100)
+            {
+                this->heaterOutput = this->maxOutput / 2.0f;
+                this->setStatus(COLD_START);
+            }
             this->heaterUpdate();
         }
     }
@@ -265,6 +265,7 @@ void Iron::toggle()
 {
     switch (this->getStatus())
     {
+    case COLD_START:
     case HEATING:
         this->setStatus(IDLE);
         this->playTone(SoundEvent::SOUND_HEATER_OFF);
@@ -288,7 +289,14 @@ void Iron::toggle()
 
 void Iron::heaterCheck()
 {
-    if (this->getHeaterOutput() < this->maxOutput)
+    float heaterOutputThreshhold = this->maxOutput;
+
+    if (this->getStatus() == COLD_START)
+    {
+        heaterOutputThreshhold = this->maxOutput / 2.0f;
+    }
+
+    if (this->getHeaterOutput() < heaterOutputThreshhold)
     {
         this->heaterCheckActive = false;
         return;

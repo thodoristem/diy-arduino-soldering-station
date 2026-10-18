@@ -46,7 +46,8 @@ public:
         HEATING,
         TUNING,
         FAULT,
-        SLEEP
+        SLEEP,
+        COLD_START
     };
 
     enum SoundEvent : uint8_t
