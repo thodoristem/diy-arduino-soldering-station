@@ -199,7 +199,7 @@ void setup()
     iron.setSelectedTemp(300);
 
     Iron::setPWMPrescaler(HEATER_A_PIN, 8);
-    Iron::setADCPrescaler(32);
+    Iron::setADCPrescaler(64);
 }
 
 unsigned long previousMillis = 0;

@@ -153,6 +153,11 @@ void Iron::runPID()
                 this->heaterOutput = this->maxOutput / 2.0f;
                 this->setStatus(COLD_START);
             }
+            else
+            {
+                this->setStatus(HEATING);
+            }
+
             this->heaterUpdate();
         }
     }
@@ -522,47 +527,55 @@ void Iron::loadSettings()
 }
 
 /**
- * @brief Sets the ADC clock prescaler on an ATmega328P Arduino Uno.
+ * @brief Sets the ADC clock prescaler.
  *
- * Configures the ADC clock divider relative to the CPU clock.
- * A lower prescaler increases ADC conversion speed but may reduce
- * measurement accuracy and effective resolution.
+ * Configures the ADC clock frequency by changing the prescaler bits
+ * in the ADCSRA register. The ADC clock is derived from the CPU clock:
  *
- * @param prescaler ADC clock divider. Supported values:
- *                  2, 4, 8, 16, 32, 64, 128.
+ *     ADC clock = F_CPU / prescaler
  *
- * @return true  if the prescaler was accepted and configured.
- * @return false if the prescaler value is unsupported.
+ * On a standard Arduino Uno, F_CPU = 16 MHz.
  *
- * @note The ADC clock is derived from the CPU clock.
- *       For a 16 MHz Arduino Uno:
+ * Supported prescalers and approximate ADC conversion times:
  *
- *       Prescaler | ADC clock | Approx. conversion time
- *       ----------|-----------|------------------------
- *             2   |   8 MHz   |       1.6 us
- *             4   |   4 MHz   |       3.3 us
- *             8   |   2 MHz   |       6.5 us
- *            16   |   1 MHz   |        13 us
- *            32   | 500 kHz   |        26 us
- *            64   | 250 kHz   |        52 us
- *           128   | 125 kHz   |       104 us
+ * Prescaler | ADC Clock | Conversion Time | Typical Accuracy
+ * ----------|-----------|-----------------|-----------------
+ *     2     |   8 MHz   |     1.6 us      | Very low
+ *     4     |   4 MHz   |     3.3 us      | Very low
+ *     8     |   2 MHz   |     6.5 us      | Low
+ *    16     |   1 MHz   |      13 us      | Reduced
+ *    32     | 500 kHz   |      26 us      | Reduced
+ *    64     | 250 kHz   |      52 us      | Good for faster sampling
+ *   128     | 125 kHz   |     104 us      | Recommended for 10-bit accuracy
  *
- * @note The prescaler is global to the ADC, not specific to an analog pin.
- *       All analog inputs use the same ADC clock.
+ * Conversion times are approximate and exclude software overhead.
+ * A normal ADC conversion takes 13 ADC clock cycles after the initial
+ * conversion, which typically takes 25 ADC clock cycles.
  *
- * @note The function modifies only the ADC prescaler bits in ADCSRA.
+ * Pros:
+ * - Lower prescaler values increase ADC sampling speed.
+ * - Higher prescaler values generally improve conversion accuracy.
+ * - Useful for balancing sampling speed and measurement quality.
  *
- * @warning The ADC is specified for full 10-bit performance at a clock
- *          of approximately 50-200 kHz. Faster settings may reduce
- *          accuracy and effective resolution.
+ * Cons:
+ * - Excessively fast ADC clocks reduce effective resolution and accuracy.
+ * - The prescaler is shared by all ADC channels; it cannot be configured
+ *   independently for each analog input.
+ * - Changing the prescaler affects analogRead() and other ADC operations.
+ * - ADC input settling and source impedance can affect measurement quality.
  *
- * @warning This function is specific to the ATmega328P and should not
- *          be assumed to work on other Arduino boards.
+ * For thermocouple measurements, a prescaler of 128 is recommended as
+ * a starting point. A prescaler of 64 may be suitable when faster sampling
+ * is required and the resulting accuracy has been verified.
  *
- * @example
- * setADCPrescaler(128);  // Default: 125 kHz ADC clock
- * setADCPrescaler(64);   // Faster: 250 kHz ADC clock
- * setADCPrescaler(32);   // Faster still: 500 kHz ADC clock
+ * @param prescaler ADC clock division factor. Valid values are 2, 4, 8,
+ *                  16, 32, 64, and 128.
+ *
+ * @return true if the prescaler was set successfully; false if the
+ *         supplied prescaler is unsupported.
+ *
+ * @note This method modifies the ADC prescaler bits only. It does not
+ *       start a conversion or wait for a conversion to complete.
  */
 bool Iron::setADCPrescaler(uint8_t prescaler)
 {
